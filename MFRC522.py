@@ -102,9 +102,14 @@ class MFRC522:
     
   serNum = []
   
-  def __init__(self, dev='/dev/ttyUSB0'):
-    self.ser = serial.Serial(port=dev,baudrate=9600)
-    self.reset(spd=1);  
+  def __init__(self, dev='/dev/ttyUSB1'):
+    # for i in [7200, 9600, 14400, 19200, 38400, 57600, 115200, 128000, 230400, 460800, 921600, 1228800]:
+    #   print(i)
+    self.ser = serial.Serial(port=dev, baudrate=115200, timeout=1.0)
+    self.reset(spd=1)
+    self.init()
+
+  def init(self):
     #self.performSelfTest() 
     self.writeRegister(self.TModeReg, 0x80)
     self.writeRegister(self.TPrescalerReg, 0xA9)
@@ -114,50 +119,51 @@ class MFRC522:
     self.writeRegister(self.ModeReg, 0x3D)
     self.writeRegister(self.TestPinEnReg, 0x00)
     self.antennaOn()
-  
+
   def reset(self, spd=None):
     if not self.writeRegister(self.CommandReg, self.PCD_RESETPHASE):
       self.ser.baudrate=115200
       self.writeRegister(self.CommandReg, self.PCD_RESETPHASE)
       self.ser.baudrate=9600
       time.sleep(0.05)
-    self.writeRegister(self.SerialSpeedReg, 0x7A)
-    self.ser.baudrate=115200 
-
-
+      self.writeRegister(self.SerialSpeedReg, 0x7A)
+      self.ser.baudrate=115200
 
   def writeRegister(self, addr, val, size=None):
+    # print("w: ", hex(addr), hex(val))
     if size is None:
       count = 0
       while True:
         self.ser.flushInput()
-        self.ser.write(chr(addr&0x7F))
-        self.ser.write(chr(val))
-        tmp = ord(self.ser.read(1))   
-        if(tmp == addr):      
+        self.ser.write(chr(addr&0x7F).encode("iso8859-1"))
+        self.ser.write(chr(val).encode("iso8859-1"))
+        tmp = self.ser.read(1)
+        # print("debug ", tmp, ord(tmp) == addr)
+        if(len(tmp) and ord(tmp) == addr):      
           return True
         count+=1
-        if(count > 10):
-          print ("Error de escritura en: "+ hex(addr))
-          return False  
-    else:       
+        if(count > 2):
+          # print(("Error de escritura en: "+ hex(addr)))
+          return False
+    else:
       self.ser.flushInput()
       for txBytes in range (0, size):
-        self.ser.write(chr(addr&0x7F))
+        self.ser.write(chr(addr&0x7F).encode("iso8859-1"))
         tmp = ord(self.ser.read(1))
         if(tmp == addr):
-          self.ser.write(chr(val[txBytes]))
+          self.ser.write(chr(val[txBytes]).encode("iso8859-1"))
         else:
-          print ("Error de escritura en bloque")
+          # print ("Error de escritura en bloque")
           return False
           
       return True    
 
   def readRegister(self, addr):
     self.ser.flushInput()
-    self.ser.write(chr(addr|0x80))
+    self.ser.write(chr(addr|0x80).encode("iso8859-1"))
     val = self.ser.read(1)
-    return ord(val)
+    # print("r: ", hex(addr), hex(val[0]))
+    return ord(val) if len(val) else 0
 
   
   def setBitMask(self, reg, mask):
@@ -219,6 +225,7 @@ class MFRC522:
     
     i = 100
     while True:
+      # print("i:", i)
       n = self.readRegister(self.CommIrqReg)
       i = i - 1
       if ~((i!=0) and ~(n&0x01) and ~(n&waitIRq)):
@@ -402,7 +409,8 @@ class MFRC522:
     if not(status == self.MI_OK) or not(backLen == 4) or not((backData[0] & 0x0F) == 0x0A):
         status = self.MI_ERR
     
-    print (str(backLen)+" backdata &0x0F == 0x0A "+str(backData[0]&0x0F))
+    if (len(backData)):
+      print((str(backLen)+" backdata &0x0F == 0x0A "+str(backData[0]&0x0F)))
     if status == self.MI_OK:
         i = 0
         buf = []
